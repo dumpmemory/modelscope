@@ -1,4 +1,4 @@
-# Copyright 2018 The Google AI Language Team Authors and The HugginFace Inc. team and Alibaba inc.
+# Copyright 2018 The Google AI Language Team Authors and The HuggingFace Inc. team and Alibaba inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -79,7 +79,7 @@ class BertConfig(object):
                 layer in the Transformer encoder.
             hidden_act: The non-linear activation function (function or string) in the
                 encoder and pooler.
-            hidden_dropout_prob: The dropout probabilitiy for all fully connected
+            hidden_dropout_prob: The dropout probability for all fully connected
                 layers in the embeddings, encoder, and pooler.
             attention_probs_dropout_prob: The dropout ratio for the attention
                 probabilities.
@@ -88,7 +88,7 @@ class BertConfig(object):
                 (e.g., 512 or 1024 or 2048).
             type_vocab_size: The vocabulary size of the `token_type_ids` passed into
                 `BertModel`.
-            initializer_range: The sttdev of the truncated_normal_initializer for
+            initializer_range: The stdev of the truncated_normal_initializer for
                 initializing all weight matrices.
         """
         self.vocab_size = vocab_size
@@ -751,19 +751,17 @@ class BERTPooler(nn.Module):
 class BertModel(nn.Module):
     """BERT model ("Bidirectional Embedding Representations from a Transformer").
 
-    Example usage:
-    ```python
-    # Already been converted into WordPiece token ids
-    input_ids = torch.LongTensor([[31, 51, 99], [15, 5, 0]])
-    input_mask = torch.LongTensor([[1, 1, 1], [1, 1, 0]])
-    token_type_ids = torch.LongTensor([[0, 0, 1], [0, 2, 0]])
+    Example:
+        >>> # Already been converted into WordPiece token ids
+        >>> input_ids = torch.LongTensor([[31, 51, 99], [15, 5, 0]])
+        >>> input_mask = torch.LongTensor([[1, 1, 1], [1, 1, 0]])
+        >>> token_type_ids = torch.LongTensor([[0, 0, 1], [0, 2, 0]])
 
-    config = modeling.BertConfig(vocab_size=32000, hidden_size=512,
-        num_hidden_layers=8, num_attention_heads=6, intermediate_size=1024)
+        >>> config = modeling.BertConfig(vocab_size=32000, hidden_size=512,
+        >>>     num_hidden_layers=8, num_attention_heads=6, intermediate_size=1024)
 
-    model = modeling.BertModel(config=config)
-    all_encoder_layers, pooled_output = model(input_ids, token_type_ids, input_mask)
-    ```
+        >>> model = modeling.BertModel(config=config)
+        >>> all_encoder_layers, pooled_output = model(input_ids, token_type_ids, input_mask)
     """
 
     def __init__(self, config: BertConfig):
@@ -846,21 +844,19 @@ class BertForSequenceClassificationMultiTask(nn.Module):
     This module is composed of the BERT model with a linear layer on top of
     the pooled output.
 
-    Example usage:
-    ```python
-    # Already been converted into WordPiece token ids
-    input_ids = torch.LongTensor([[31, 51, 99], [15, 5, 0]])
-    input_mask = torch.LongTensor([[1, 1, 1], [1, 1, 0]])
-    token_type_ids = torch.LongTensor([[0, 0, 1], [0, 2, 0]])
+    Example:
+        >>> # Already been converted into WordPiece token ids
+        >>> input_ids = torch.LongTensor([[31, 51, 99], [15, 5, 0]])
+        >>> input_mask = torch.LongTensor([[1, 1, 1], [1, 1, 0]])
+        >>> token_type_ids = torch.LongTensor([[0, 0, 1], [0, 2, 0]])
 
-    config = BertConfig(vocab_size=32000, hidden_size=512,
-        num_hidden_layers=8, num_attention_heads=6, intermediate_size=1024)
+        >>> config = BertConfig(vocab_size=32000, hidden_size=512,
+        >>>     num_hidden_layers=8, num_attention_heads=6, intermediate_size=1024)
 
-    num_labels = 2
+        >>> num_labels = 2
 
-    model = BertForSequenceClassification(config, num_labels)
-    logits = model(input_ids, token_type_ids, input_mask)
-    ```
+        >>> model = BertForSequenceClassification(config, num_labels)
+        >>> logits = model(input_ids, token_type_ids, input_mask)
     """
 
     def __init__(self, config, label_list, core_encoder):

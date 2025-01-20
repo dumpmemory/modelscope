@@ -356,7 +356,7 @@ class HighResolutionNet(nn.Module):
                                                        num_channels)
         self.stage3, pre_stage_channels = self._make_stage(
             self.stage3_cfg, num_channels)
-        last_inp_channels = np.int(np.sum(pre_stage_channels)) + 256
+        last_inp_channels = int(np.sum(pre_stage_channels)) + 256
         self.redc_layer = nn.Sequential(
             nn.Conv2d(
                 in_channels=last_inp_channels,
@@ -556,10 +556,10 @@ class HighResolutionNet(nn.Module):
             x = x + F.relu_(aspp_out[i] * 0.25) * pred_attn_list[i]
 
         bz = x.size(0)
-        # -- Besides, we also need to let the prediction attention be close to visable domain
+        # -- Besides, we also need to let the prediction attention be close to visible domain
         # -- Calculate the domain distance and get the weights
         # - First, detach domains
-        G_all_d = self.G_all.detach()  # use detached G_all for calulcating
+        G_all_d = self.G_all.detach()  # use detached G_all for calculating
         pred_attn_d = pred_attn.detach().view(bz, 512, 1, 1)
 
         if self.cosine == 1:

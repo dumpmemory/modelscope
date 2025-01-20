@@ -16,6 +16,8 @@ from . import utils
 if tf.__version__ >= '2.0':
     tf = tf.compat.v1
 
+# test
+
 # skip parse sys.argv in tf, so fix bug:
 # absl.flags._exceptions.UnrecognizedFlagError:
 # Unknown command line flag 'OCRDetectionPipeline: Unknown command line flag
@@ -68,7 +70,7 @@ def _nn_variable(name, shape, init_method, collection=None, **kwargs):
     shape: variable shape
     init_method: 'zero', 'kaiming', 'xavier', or (mean, std)
     collection: if not none, add variable to this collection
-    kwargs: extra paramters passed to tf.get_variable
+    kwargs: extra parameters passed to tf.get_variable
   RETURN
     var: a new or existing variable
   """

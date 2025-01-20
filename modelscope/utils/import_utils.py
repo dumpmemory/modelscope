@@ -3,34 +3,29 @@
 import ast
 import functools
 import importlib
+import inspect
+import logging
 import os
 import os.path as osp
 import sys
 from collections import OrderedDict
-from functools import wraps
 from importlib import import_module
 from itertools import chain
 from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-from packaging import version
-
 from modelscope.utils.ast_utils import (INDEX_KEY, MODULE_KEY, REQUIREMENT_KEY,
                                         load_index)
 from modelscope.utils.error import *  # noqa
 from modelscope.utils.logger import get_logger
-
-logger = get_logger(__name__)
 
 if sys.version_info < (3, 8):
     import importlib_metadata
 else:
     import importlib.metadata as importlib_metadata
 
-logger = get_logger()
-
-AST_INDEX = None
+logger = get_logger(log_level=logging.WARNING)
 
 
 def import_modules_from_file(py_file: str):
@@ -195,6 +190,7 @@ if USE_TF in ENV_VARS_TRUE_AND_AUTO_VALUES and USE_TORCH not in ENV_VARS_TRUE_VA
                 pass
         _tf_available = _tf_version is not None
     if _tf_available:
+        from packaging import version
         if version.parse(_tf_version) < version.parse('2'):
             pass
         else:
@@ -249,6 +245,10 @@ def is_wenetruntime_available():
     return importlib.util.find_spec('wenetruntime') is not None
 
 
+def is_swift_available():
+    return importlib.util.find_spec('swift') is not None
+
+
 def is_tf_available():
     return _tf_available
 
@@ -274,6 +274,18 @@ def is_espnet_available(pkg_name):
         and importlib.util.find_spec('espnet')
 
 
+def is_vllm_available():
+    return importlib.util.find_spec('vllm') is not None
+
+
+def is_transformers_available():
+    return importlib.util.find_spec('transformers') is not None
+
+
+def is_tensorrt_llm_available():
+    return importlib.util.find_spec('tensorrt_llm') is not None
+
+
 REQUIREMENTS_MAAPING = OrderedDict([
     ('protobuf', (is_protobuf_available, PROTOBUF_IMPORT_ERROR)),
     ('sentencepiece', (is_sentencepiece_available,
@@ -290,16 +302,26 @@ REQUIREMENTS_MAAPING = OrderedDict([
     ('scipy', (is_scipy_available, SCIPY_IMPORT_ERROR)),
     ('cv2', (is_opencv_available, OPENCV_IMPORT_ERROR)),
     ('PIL', (is_pillow_available, PILLOW_IMPORT_ERROR)),
+    ('pai-easynlp', (is_package_available('easynlp'), EASYNLP_IMPORT_ERROR)),
     ('espnet2', (is_espnet_available,
                  GENERAL_IMPORT_ERROR.replace('REQ', 'espnet'))),
     ('espnet', (is_espnet_available,
                 GENERAL_IMPORT_ERROR.replace('REQ', 'espnet'))),
-    ('easyasr', (is_package_available('easyasr'), AUDIO_IMPORT_ERROR)),
+    ('funasr', (is_package_available('funasr'), AUDIO_IMPORT_ERROR)),
     ('kwsbp', (is_package_available('kwsbp'), AUDIO_IMPORT_ERROR)),
     ('decord', (is_package_available('decord'), DECORD_IMPORT_ERROR)),
     ('deepspeed', (is_package_available('deepspeed'), DEEPSPEED_IMPORT_ERROR)),
     ('fairseq', (is_package_available('fairseq'), FAIRSEQ_IMPORT_ERROR)),
     ('fasttext', (is_package_available('fasttext'), FASTTEXT_IMPORT_ERROR)),
+    ('megatron_util', (is_package_available('megatron_util'),
+                       MEGATRON_UTIL_IMPORT_ERROR)),
+    ('text2sql_lgesql', (is_package_available('text2sql_lgesql'),
+                         TEXT2SQL_LGESQL_IMPORT_ERROR)),
+    ('mpi4py', (is_package_available('mpi4py'), MPI4PY_IMPORT_ERROR)),
+    ('open_clip', (is_package_available('open_clip'), OPENCLIP_IMPORT_ERROR)),
+    ('taming', (is_package_available('taming'), TAMING_IMPORT_ERROR)),
+    ('xformers', (is_package_available('xformers'), XFORMERS_IMPORT_ERROR)),
+    ('swift', (is_package_available('swift'), SWIFT_IMPORT_ERROR)),
 ])
 
 SYSTEM_PACKAGE = set(['os', 'sys', 'typing'])
@@ -355,9 +377,7 @@ def tf_required(func):
 
 
 class LazyImportModule(ModuleType):
-    AST_INDEX = None
-    if AST_INDEX is None:
-        AST_INDEX = load_index()
+    _AST_INDEX = None
 
     def __init__(self,
                  name,
@@ -389,7 +409,7 @@ class LazyImportModule(ModuleType):
             try:
                 getattr(self, sub_module)
             except Exception as e:
-                logger.warn(
+                logger.warning(
                     f'pre load module {sub_module} error, please check {e}')
 
     # Needed for autocompletion in an IDE
@@ -419,12 +439,15 @@ class LazyImportModule(ModuleType):
 
     def _get_module(self, module_name: str):
         try:
-            # check requirements before module import
             module_name_full = self.__name__ + '.' + module_name
-            if module_name_full in LazyImportModule.AST_INDEX[REQUIREMENT_KEY]:
-                requirements = LazyImportModule.AST_INDEX[REQUIREMENT_KEY][
-                    module_name_full]
-                requires(module_name_full, requirements)
+            if not any(
+                    module_name_full.startswith(f'modelscope.{prefix}')
+                    for prefix in ['hub', 'utils', 'version', 'fileio']):
+                # check requirements before module import
+                ast_index = self.get_ast_index()
+                if module_name_full in ast_index[REQUIREMENT_KEY]:
+                    requirements = ast_index[REQUIREMENT_KEY][module_name_full]
+                    requires(module_name_full, requirements)
             return importlib.import_module('.' + module_name, self.__name__)
         except Exception as e:
             raise RuntimeError(
@@ -436,19 +459,45 @@ class LazyImportModule(ModuleType):
                                 self._import_structure)
 
     @staticmethod
+    def get_ast_index():
+        if LazyImportModule._AST_INDEX is None:
+            LazyImportModule._AST_INDEX = load_index()
+        return LazyImportModule._AST_INDEX
+
+    @staticmethod
     def import_module(signature):
         """ import a lazy import module using signature
 
         Args:
             signature (tuple): a tuple of str, (registry_name, registry_group_name, module_name)
         """
-        if signature in LazyImportModule.AST_INDEX[INDEX_KEY]:
-            mod_index = LazyImportModule.AST_INDEX[INDEX_KEY][signature]
+        ast_index = LazyImportModule.get_ast_index()
+        if signature in ast_index[INDEX_KEY]:
+            mod_index = ast_index[INDEX_KEY][signature]
             module_name = mod_index[MODULE_KEY]
-            if module_name in LazyImportModule.AST_INDEX[REQUIREMENT_KEY]:
-                requirements = LazyImportModule.AST_INDEX[REQUIREMENT_KEY][
-                    module_name]
+            if module_name in ast_index[REQUIREMENT_KEY]:
+                requirements = ast_index[REQUIREMENT_KEY][module_name]
                 requires(module_name, requirements)
             importlib.import_module(module_name)
         else:
             logger.warning(f'{signature} not found in ast index file')
+
+
+def has_attr_in_class(cls, attribute_name) -> bool:
+    """
+    Determine if attribute in specific class.
+
+    Args:
+        cls: target class.
+        attribute_name: the attribute name.
+
+    Returns:
+        The attribute in the class or not.
+    """
+    init_method = cls.__init__
+    signature = inspect.signature(init_method)
+
+    parameters = signature.parameters
+    param_names = list(parameters.keys())
+
+    return attribute_name in param_names

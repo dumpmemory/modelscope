@@ -14,9 +14,9 @@ from .builder import METRICS, MetricKeys
 @METRICS.register_module(
     group_key=default_group, module_name=Metrics.multi_average_precision)
 class AveragePrecisionMetric(Metric):
-    """The metric computation class for multi avarage precision classes.
+    """The metric computation class for multi average precision classes.
 
-    This metric class calculates multi avarage precision for the whole input batches.
+    This metric class calculates multi average precision for the whole input batches.
     """
 
     def __init__(self, *args, **kwargs):
@@ -49,6 +49,17 @@ class AveragePrecisionMetric(Metric):
         assert len(self.preds) == len(self.labels)
         scores = self._calculate_ap_score(self.preds, self.labels, self.thresh)
         return {MetricKeys.mAP: scores.mean().item()}
+
+    def merge(self, other: 'AveragePrecisionMetric'):
+        self.preds.extend(other.preds)
+        self.labels.extend(other.labels)
+
+    def __getstate__(self):
+        return self.preds, self.labels, self.thresh
+
+    def __setstate__(self, state):
+        self.__init__()
+        self.preds, self.labels, self.thresh = state
 
     def _calculate_ap_score(self, preds, labels, thresh=0.5):
         hyps = np.array(preds)

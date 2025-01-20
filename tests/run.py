@@ -3,6 +3,7 @@
 
 import argparse
 import datetime
+import importlib
 import math
 import multiprocessing
 import os
@@ -263,6 +264,26 @@ def wait_for_workers(workers):
         time.sleep(0.001)
 
 
+def parallel_run_case(isolated_cases, result_dir, parallel):
+    # case worker processes
+    worker_processes = [None] * parallel
+    for test_suite_file in isolated_cases:  # run case in subprocess
+        cmd = [
+            'python',
+            'tests/run.py',
+            '--pattern',
+            test_suite_file,
+            '--result_dir',
+            result_dir,
+        ]
+        worker_idx = wait_for_free_worker(worker_processes)
+        worker_process = async_run_command_with_popen(cmd, worker_idx)
+        os.set_blocking(worker_process.stdout.fileno(), False)
+        worker_processes[worker_idx] = worker_process
+
+    wait_for_workers(worker_processes)
+
+
 def parallel_run_case_in_env(env_name, env, test_suite_env_map, isolated_cases,
                              result_dir, parallel):
     logger.info('Running case in env: %s' % env_name)
@@ -297,6 +318,7 @@ def parallel_run_case_in_env(env_name, env, test_suite_env_map, isolated_cases,
         if k not in isolated_cases and v == env_name:
             remain_suite_files.append(k)
     if len(remain_suite_files) == 0:
+        wait_for_workers(worker_processes)
         return
     # roughly split case in parallel
     part_count = math.ceil(len(remain_suite_files) / parallel)
@@ -354,39 +376,90 @@ def run_case_in_env(env_name, env, test_suite_env_map, isolated_cases,
     run_command_with_popen(cmd)
 
 
+def run_non_parallelizable_test_suites(suites, result_dir):
+    cmd = ['python', 'tests/run.py', '--result_dir', result_dir, '--suites']
+    for suite in suites:
+        cmd.append(suite)
+    run_command_with_popen(cmd)
+
+
+# Selected cases:
+def get_selected_cases():
+    cmd = ['python', '-u', 'tests/run_analysis.py']
+    selected_cases = []
+    with subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            bufsize=1,
+            encoding='utf8') as sub_process:
+        for line in iter(sub_process.stdout.readline, ''):
+            sys.stdout.write(line)
+            if line.startswith('Selected cases:'):
+                line = line.replace('Selected cases:', '').strip()
+                selected_cases = line.split(',')
+        sub_process.wait()
+        if sub_process.returncode != 0:
+            msg = 'Run analysis exception, returncode: %s!' % sub_process.returncode
+            logger.error(msg)
+            raise Exception(msg)
+    return selected_cases
+
+
 def run_in_subprocess(args):
     # only case args.isolated_cases run in subporcess, all other run in a subprocess
-    test_suite_files = gather_test_suites_files(
-        os.path.abspath(args.test_dir), args.pattern)
-    run_config = None
+    if not args.no_diff:  # run based on git diff
+        try:
+            test_suite_files = get_selected_cases()
+            logger.info('Tests suite to run: ')
+            for f in test_suite_files:
+                logger.info(f)
+        except Exception:
+            logger.error(
+                'Get test suite based diff exception!, will run all cases.')
+            test_suite_files = gather_test_suites_files(
+                os.path.abspath(args.test_dir), args.pattern)
+        if len(test_suite_files) == 0:
+            logger.error('Get no test suite based on diff, run all the cases.')
+            test_suite_files = gather_test_suites_files(
+                os.path.abspath(args.test_dir), args.pattern)
+    else:
+        test_suite_files = gather_test_suites_files(
+            os.path.abspath(args.test_dir), args.pattern)
+
+    non_parallelizable_suites = [
+        'test_download_dataset.py',
+        'test_hub_examples.py',
+        'test_hub_operation.py',
+        'test_hub_private_files.py',
+        'test_hub_private_repository.py',
+        'test_hub_repository.py',
+        'test_hub_retry.py',
+        'test_hub_revision.py',
+        'test_hub_revision_release_mode.py',
+        'test_hub_upload.py',
+        'test_custom_pipeline_cmd.py',
+        'test_download_cmd.py',
+        'test_modelcard_cmd.py',
+        'test_plugins_cmd.py',
+    ]
+    test_suite_files = [
+        x for x in test_suite_files if x not in non_parallelizable_suites
+    ]
+
     isolated_cases = []
-    test_suite_env_map = {}
-    # put all the case in default env.
-    for test_suite_file in test_suite_files:
-        test_suite_env_map[test_suite_file] = 'default'
-
-    if args.run_config is not None and Path(args.run_config).exists():
-        with open(args.run_config, encoding='utf-8') as f:
-            run_config = yaml.load(f, Loader=yaml.FullLoader)
-        if 'isolated' in run_config:
-            isolated_cases = run_config['isolated']
-
-        if 'envs' in run_config:
-            for env in run_config['envs']:
-                if env != 'default':
-                    for test_suite in run_config['envs'][env]['tests']:
-                        if test_suite in test_suite_env_map:
-                            test_suite_env_map[test_suite] = env
-
     if args.subprocess:  # run all case in subprocess
         isolated_cases = test_suite_files
 
     with tempfile.TemporaryDirectory() as temp_result_dir:
-        for env in set(test_suite_env_map.values()):
-            parallel_run_case_in_env(env, run_config['envs'][env],
-                                     test_suite_env_map, isolated_cases,
-                                     temp_result_dir, args.parallel)
+        # first run cases that nonparallelizable
+        run_non_parallelizable_test_suites(non_parallelizable_suites,
+                                           temp_result_dir)
 
+        # run case parallel
+        parallel_run_case(isolated_cases, temp_result_dir, args.parallel)
+
+        # collect test results
         result_dfs = []
         result_path = Path(temp_result_dir)
         for result in result_path.iterdir():
@@ -432,10 +505,7 @@ class TimeCostTextTestResult(TextTestResult):
         self.stream.writeln(
             'Test case: %s stop at: %s, cost time: %s(seconds)' %
             (test.test_full_name, test.stop_time, test.time_cost))
-        if torch.cuda.is_available(
-        ) and test.time_cost > 5.0:  # print nvidia-smi
-            cmd = ['nvidia-smi']
-            run_command_with_popen(cmd)
+
         super(TimeCostTextTestResult, self).stopTest(test)
 
     def addSuccess(self, test):
@@ -530,7 +600,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--level', default=0, type=int, help='2 -- all, 1 -- p1, 0 -- p0')
     parser.add_argument(
-        '--disable_profile', action='store_true', help='disable profiling')
+        '--profile', action='store_true', help='enable profiling')
     parser.add_argument(
         '--run_config',
         default=None,
@@ -550,14 +620,21 @@ if __name__ == '__main__':
         help='Set case parallels, default single process, set with gpu number.'
     )
     parser.add_argument(
+        '--no-diff',
+        action='store_true',
+        help=
+        'Default running case based on git diff(with master), disable with --no-diff)'
+    )
+    parser.add_argument(
         '--suites',
         nargs='*',
         help='Run specified test suites(test suite files list split by space)')
     args = parser.parse_args()
+    print(args)
     set_test_level(args.level)
     os.environ['REGRESSION_BASELINE'] = '1'
     logger.info(f'TEST LEVEL: {test_level()}')
-    if not args.disable_profile:
+    if args.profile:
         from utils import profiler
         logger.info('enable profile ...')
         profiler.enable()

@@ -33,6 +33,9 @@ class TableQuestionAnsweringPipeline(Pipeline):
                  model: Union[TableQuestionAnswering, str],
                  preprocessor: TableQuestionAnsweringPreprocessor = None,
                  db: Database = None,
+                 config_file: str = None,
+                 device: str = 'gpu',
+                 auto_collate=True,
                  **kwargs):
         """use `model` and `preprocessor` to create a table question answering prediction pipeline
 
@@ -40,22 +43,36 @@ class TableQuestionAnsweringPipeline(Pipeline):
             model (TableQuestionAnswering): a model instance
             preprocessor (TableQuestionAnsweringPreprocessor): a preprocessor instance
             db (Database): a database to store tables in the database
+            kwargs (dict, `optional`):
+                Extra kwargs passed into the preprocessor's constructor.
         """
-        model = model if isinstance(
-            model, TableQuestionAnswering) else Model.from_pretrained(model)
-        if preprocessor is None:
-            preprocessor = TableQuestionAnsweringPreprocessor(model.model_dir)
+        super().__init__(
+            model=model,
+            preprocessor=preprocessor,
+            config_file=config_file,
+            device=device,
+            auto_collate=auto_collate,
+            compile=kwargs.pop('compile', False),
+            compile_options=kwargs.pop('compile_options', {}))
 
-        # initilize tokenizer
+        assert isinstance(self.model, Model), \
+            f'please check whether model config exists in {ModelFile.CONFIGURATION}'
+
+        if preprocessor is None:
+            self.preprocessor = TableQuestionAnsweringPreprocessor(
+                self.model.model_dir, **kwargs)
+
+        # initialize tokenizer
         self.tokenizer = BertTokenizer(
-            os.path.join(model.model_dir, ModelFile.VOCAB_FILE))
+            os.path.join(self.model.model_dir, ModelFile.VOCAB_FILE))
 
         # initialize database
         if db is None:
             self.db = Database(
                 tokenizer=self.tokenizer,
-                table_file_path=os.path.join(model.model_dir, 'table.json'),
-                syn_dict_file_path=os.path.join(model.model_dir,
+                table_file_path=os.path.join(self.model.model_dir,
+                                             'table.json'),
+                syn_dict_file_path=os.path.join(self.model.model_dir,
                                                 'synonym.txt'))
         else:
             self.db = db
@@ -71,7 +88,12 @@ class TableQuestionAnsweringPipeline(Pipeline):
         self.schema_link_dict = constant.schema_link_dict
         self.limit_dict = constant.limit_dict
 
-        super().__init__(model=model, preprocessor=preprocessor, **kwargs)
+    def prepare_model(self):
+        """ Place model on certain device for pytorch models before first inference
+                """
+        self._model_prepare_lock.acquire(timeout=600)
+        self.model.to(self.device)
+        self._model_prepare_lock.release()
 
     def post_process_multi_turn(self, history_sql, result, table):
         action = self.action_ops[result['action']]
@@ -294,6 +316,11 @@ class TableQuestionAnsweringPipeline(Pipeline):
             if sql['agg'][idx] == 0:
                 str_sel_list.append(header_name)
                 sql_sel_list.append(header_id)
+            elif sql['agg'][idx] == 4:
+                str_sel_list.append(self.agg_ops[sql['agg'][idx]]
+                                    + '(DISTINCT ' + header_name + ')')
+                sql_sel_list.append(self.agg_ops[sql['agg'][idx]]
+                                    + '(DISTINCT ' + header_id + ')')
             else:
                 str_sel_list.append(self.agg_ops[sql['agg'][idx]] + '('
                                     + header_name + ')')
@@ -376,7 +403,7 @@ class TableQuestionAnsweringPipeline(Pipeline):
             OutputKeys.SQL_STRING: sql.string,
             OutputKeys.SQL_QUERY: sql.query,
             OutputKeys.HISTORY: result['sql'],
-            OutputKeys.QUERT_RESULT: tabledata,
+            OutputKeys.QUERY_RESULT: tabledata,
         }
 
         return {OutputKeys.OUTPUT: output}

@@ -8,7 +8,7 @@ from modelscope.outputs import OutputKeys
 from modelscope.pipelines.base import Pipeline
 from modelscope.pipelines.builder import PIPELINES
 from modelscope.preprocessors import Preprocessor
-from modelscope.utils.constant import Tasks
+from modelscope.utils.constant import ModelFile, Tasks
 
 __all__ = ['FaqQuestionAnsweringPipeline']
 
@@ -20,28 +20,49 @@ class FaqQuestionAnsweringPipeline(Pipeline):
     def __init__(self,
                  model: Union[str, Model],
                  preprocessor: Preprocessor = None,
+                 config_file: str = None,
+                 device: str = 'gpu',
+                 auto_collate=True,
                  **kwargs):
-        model = Model.from_pretrained(model) if isinstance(model,
-                                                           str) else model
+        """The faq question answering pipeline.
+
+        Args:
+            model (str or Model): A model instance or a model local dir or a model id in the model hub.
+            preprocessor (Preprocessor, `optional`): a preprocessor instance
+            kwargs (dict, `optional`):
+                The preprocessor kwargs passed into the preprocessor's constructor.
+        """
+        super().__init__(
+            model=model,
+            preprocessor=preprocessor,
+            config_file=config_file,
+            device=device,
+            auto_collate=auto_collate)
+        assert isinstance(self.model, Model), \
+            f'please check whether model config exists in {ModelFile.CONFIGURATION}'
         if preprocessor is None:
-            preprocessor = Preprocessor.from_pretrained(
-                model.model_dir, **kwargs)
-        super().__init__(model=model, preprocessor=preprocessor, **kwargs)
+            self.preprocessor = Preprocessor.from_pretrained(
+                self.model.model_dir, **kwargs)
+        if hasattr(self.model, 'eval'):
+            self.model.eval()
 
     def _sanitize_parameters(self, **pipeline_parameters):
         return pipeline_parameters, pipeline_parameters, pipeline_parameters
 
     def get_sentence_embedding(self, inputs, max_len=None):
+        if (self.model or (self.has_multiple_models and self.models[0])):
+            if not self._model_prepare:
+                self.prepare_model()
         inputs = self.preprocessor.batch_encode(inputs, max_length=max_len)
         sentence_vecs = self.model.forward_sentence_embedding(inputs)
         sentence_vecs = sentence_vecs.detach().tolist()
         return sentence_vecs
 
-    def forward(self, inputs: [list, Dict[str, Any]],
+    def forward(self, inputs: Union[list, Dict[str, Any]],
                 **forward_params) -> Dict[str, Any]:
         return self.model(inputs)
 
-    def postprocess(self, inputs: [list, Dict[str, Any]],
+    def postprocess(self, inputs: Union[list, Dict[str, Any]],
                     **postprocess_params) -> Dict[str, Any]:
         scores = inputs['scores']
         labels = []

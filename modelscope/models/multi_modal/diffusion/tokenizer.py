@@ -1,4 +1,4 @@
-# Copyright 2018 The Google AI Language Team Authors and The HugginFace Inc. team and Alibaba inc.
+# Copyright 2018 The Google AI Language Team Authors and The HuggingFace Inc. team and Alibaba inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -246,8 +246,8 @@ class WordpieceTokenizer(object):
         using the given vocabulary.
 
         For example:
-          input = "unaffable"
-          output = ["un", "##aff", "##able"]
+          >>> input = "unaffable"
+          >>> output = ["un", "##aff", "##able"]
 
         Args:
           text: A single token or whitespace separated tokens. This should have

@@ -14,7 +14,7 @@ logger = get_logger()
 def is_config_has_model(cfg_file):
     try:
         cfg = Config.from_file(cfg_file)
-        return hasattr(cfg, 'model')
+        return hasattr(cfg, 'model') or hasattr(cfg, 'model_type')
     except Exception as e:
         logger.error(f'parse config file {cfg_file} failed: {e}')
         return False
@@ -35,8 +35,7 @@ def is_official_hub_path(path: Union[str, List],
                 _ = HubApi().get_model(path, revision=revision)
                 return True
             except Exception as e:
-                logger.warning(f'get model exception: {e}')
-                return False
+                raise ValueError(f'invalid model repo path {e}')
 
     if isinstance(path, str):
         return is_official_hub_impl(path)
@@ -59,14 +58,21 @@ def is_model(path: Union[str, List]):
     def is_modelhub_path_impl(path):
         if osp.exists(path):
             cfg_file = osp.join(path, ModelFile.CONFIGURATION)
+            hf_cfg_file = osp.join(path, ModelFile.CONFIG)
             if osp.exists(cfg_file):
                 return is_config_has_model(cfg_file)
+            elif osp.exists(hf_cfg_file):
+                return is_config_has_model(hf_cfg_file)
             else:
                 return False
         else:
             try:
                 cfg_file = model_file_download(path, ModelFile.CONFIGURATION)
-                return is_config_has_model(cfg_file)
+                if is_config_has_model(cfg_file):
+                    return True
+                else:
+                    hf_cfg_file = model_file_download(path, ModelFile.CONFIG)
+                    return is_config_has_model(hf_cfg_file)
             except Exception:
                 return False
 
@@ -82,3 +88,26 @@ def is_model(path: Union[str, List]):
             )
 
         return all_true
+
+
+def batch_process(model, data):
+    import torch
+    if model.__class__.__name__ == 'OfaForAllTasks':
+        # collate batch data due to the nested data structure
+        assert isinstance(data, list)
+        batch_data = {
+            'nsentences': len(data),
+            'samples': [d['samples'][0] for d in data],
+            'net_input': {}
+        }
+        for k in data[0]['net_input'].keys():
+            batch_data['net_input'][k] = torch.cat(
+                [d['net_input'][k] for d in data])
+        if 'w_resize_ratios' in data[0]:
+            batch_data['w_resize_ratios'] = torch.cat(
+                [d['w_resize_ratios'] for d in data])
+        if 'h_resize_ratios' in data[0]:
+            batch_data['h_resize_ratios'] = torch.cat(
+                [d['h_resize_ratios'] for d in data])
+
+        return batch_data

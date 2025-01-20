@@ -16,10 +16,8 @@ from typing import Dict, Union
 
 import addict
 import json
-from yapf.yapflib.yapf_api import FormatCode
 
 from modelscope.utils.constant import ConfigFields, ModelFile
-from modelscope.utils.import_utils import import_modules_from_file
 from modelscope.utils.logger import get_logger
 
 logger = get_logger()
@@ -34,9 +32,9 @@ class ConfigDict(addict.Dict):
     """ Dict which support get value through getattr
 
     Examples:
-    >>> cdict = ConfigDict({'a':1232})
-    >>> print(cdict.a)
-    1232
+        >>> cdict = ConfigDict({'a':1232})
+        >>> print(cdict.a)
+        >>> # 1232
     """
 
     def __missing__(self, name):
@@ -101,6 +99,8 @@ class Config:
             shutil.copyfile(filename, tmp_cfg_file.name)
 
             if filename.endswith('.py'):
+                # import as needed.
+                from modelscope.utils.import_utils import import_modules_from_file
                 module_nanme, mod = import_modules_from_file(
                     osp.join(tmp_cfg_dir, tmp_cfg_name))
                 cfg_dict = {}
@@ -282,6 +282,7 @@ class Config:
             based_on_style='pep8',
             blank_line_before_nested_class_or_def=True,
             split_before_expression_after_opening_paren=True)
+        from yapf.yapflib.yapf_api import FormatCode
         text, _ = FormatCode(text, style_config=yapf_style, verify=True)
 
         return text
@@ -336,6 +337,47 @@ class Config:
         super(Config, self).__setattr__('_cfg_dict', _cfg_dict)
         super(Config, self).__setattr__('_filename', _filename)
         super(Config, self).__setattr__('_text', _text)
+
+    def safe_get(self, key_chain: str, default=None, type_field='type'):
+        """Get a value with a key-chain in str format, if key does not exist, the default value will be returned.
+
+        This method is safe to call, and will not edit any value.
+
+        Args:
+            key_chain: The input key chain, for example: 'train.hooks[0].type'
+            default: The default value returned when any key does not exist, default None.
+            type_field: Get an object from a list or tuple for example by 'train.hooks.CheckPointHook', in which
+                'hooks' is a list, and 'CheckPointHook' is a value of the content of key `type_field`.
+                If there are multiple matched objects, the first element will be returned.
+        Returns:
+            The value, or the default value.
+        """
+        try:
+            keys = key_chain.split('.')
+            _cfg_dict = self._cfg_dict
+            for key in keys:
+                val = None
+                if '[' in key:
+                    key, val = key.split('[')
+                    val, _ = val.split(']')
+
+                if isinstance(_cfg_dict, (list, tuple)):
+                    assert type_field is not None, 'Getting object without an index from a list or tuple ' \
+                                                   'needs an valid `type_field` param.'
+                    _sub_cfg_dict = list(
+                        filter(lambda sub: sub[type_field] == key, _cfg_dict))
+                    _cfg_dict = _sub_cfg_dict[0]
+                else:
+                    _cfg_dict = _cfg_dict[key]
+                if val is not None:
+                    _cfg_dict = _cfg_dict[int(val)]
+            return _cfg_dict
+        except Exception as e:
+            logger.debug(
+                f'Key not valid in Config: {key_chain}, return the default value: {default}'
+            )
+            logger.debug(e)
+            return default
 
     def dump(self, file: str = None):
         """Dumps config into a file or returns a string representation of the
@@ -633,16 +675,6 @@ def check_config(cfg: Union[str, ConfigDict], is_training=False):
         check_attr(ConfigFields.train)
         check_attr(ConfigFields.preprocessor)
         check_attr(ConfigFields.evaluation)
-
-
-def use_task_specific_params(model, task):
-    """Update config with summarization specific params."""
-    task_specific_params = model.config.task_specific_params
-
-    if task_specific_params is not None:
-        pars = task_specific_params.get(task, {})
-        logger.info(f'using task specific params for {task}: {pars}')
-        model.config.update(pars)
 
 
 class JSONIteratorEncoder(json.JSONEncoder):

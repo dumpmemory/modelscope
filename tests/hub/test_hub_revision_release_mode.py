@@ -16,8 +16,9 @@ from modelscope.hub.file_download import model_file_download
 from modelscope.hub.repository import Repository
 from modelscope.hub.snapshot_download import snapshot_download
 from modelscope.utils.logger import get_logger
-from .test_utils import (TEST_ACCESS_TOKEN1, TEST_MODEL_CHINESE_NAME,
-                         TEST_MODEL_ORG)
+from modelscope.utils.test_utils import (TEST_ACCESS_TOKEN1,
+                                         TEST_MODEL_CHINESE_NAME,
+                                         TEST_MODEL_ORG)
 
 logger = get_logger()
 logger.setLevel('DEBUG')
@@ -92,6 +93,7 @@ class HubRevisionTest(unittest.TestCase):
             self.prepare_repo_data()  # no tag, default get master
             branch_name = 'test'
             self.add_new_file_and_branch_to_repo(branch_name)
+            time.sleep(5)
             with tempfile.TemporaryDirectory() as temp_cache_dir:
                 snapshot_path = snapshot_download(
                     self.model_id,

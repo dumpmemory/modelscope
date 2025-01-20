@@ -1,5 +1,5 @@
 # Copyright 2021-2022 The Alibaba DAMO Team Authors. All rights reserved.
-# Copyright 2018 The Google AI Language Team Authors and The HugginFace Inc. team.
+# Copyright 2018 The Google AI Language Team Authors and The HuggingFace Inc. team.
 # Copyright (c) 2018, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -656,7 +656,7 @@ class PreTrainedBertModel(nn.Module):
                     . `bert_config.json` a configuration file for the model
                     . `pytorch_model.bin` a PyTorch dump of a BertForPreTraining instance
             cache_dir: an optional path to a folder in which the pre-trained models will be cached.
-            state_dict: an optional state dictionnary (collections.OrderedDict object)
+            state_dict: an optional state dictionary (collections.OrderedDict object)
                 to use instead of Google pre-trained models
             *inputs, **kwargs: additional input for the specific Bert class
                 (ex: num_labels for BertForSequenceClassification)
@@ -773,19 +773,17 @@ class SpaceTCnModel(PreTrainedBertModel):
             classifier pretrained on top of the hidden state associated to the first character of the
             input (`CLF`) to train on the Next-Sentence task (see BERT's paper).
 
-    Example usage:
-    ```python
-    # Already been converted into WordPiece token ids
-    input_ids = torch.LongTensor([[31, 51, 99], [15, 5, 0]])
-    input_mask = torch.LongTensor([[1, 1, 1], [1, 1, 0]])
-    token_type_ids = torch.LongTensor([[0, 0, 1], [0, 1, 0]])
+    Example:
+        >>> # Already been converted into WordPiece token ids
+        >>> input_ids = torch.LongTensor([[31, 51, 99], [15, 5, 0]])
+        >>> input_mask = torch.LongTensor([[1, 1, 1], [1, 1, 0]])
+        >>> token_type_ids = torch.LongTensor([[0, 0, 1], [0, 1, 0]])
 
-    config = modeling.SpaceTCnConfig(vocab_size_or_config_json_file=32000, hidden_size=768,
-        num_hidden_layers=12, num_attention_heads=12, intermediate_size=3072)
+        >>> config = modeling.SpaceTCnConfig(vocab_size_or_config_json_file=32000, hidden_size=768,
+        >>>     num_hidden_layers=12, num_attention_heads=12, intermediate_size=3072)
 
-    model = modeling.SpaceTCnModel(config=config)
-    all_encoder_layers, pooled_output = model(input_ids, token_type_ids, input_mask)
-    ```
+        >>> model = modeling.SpaceTCnModel(config=config)
+        >>> all_encoder_layers, pooled_output = model(input_ids, token_type_ids, input_mask)
     """
 
     def __init__(self, config, schema_link_module='none'):
@@ -890,6 +888,9 @@ class Seq2SQL(nn.Module):
         self.action_model = nn.Linear(iS, n_action_ops + 1)
         self.slen_model = nn.Linear(iS, max_select_num + 1)
         self.wlen_model = nn.Linear(iS, max_where_num + 1)
+
+    def set_device(self, device):
+        self.device = device
 
     def forward(self, wemb_layer, l_n, l_hs, start_index, column_index, tokens,
                 ids):

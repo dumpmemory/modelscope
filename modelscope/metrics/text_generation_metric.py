@@ -1,6 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
-from typing import Dict, Iterable, List
+import sys
+from contextlib import contextmanager
+from typing import Dict, Iterable, List, Tuple
 
 from nltk.translate.bleu_score import SmoothingFunction, corpus_bleu
 from rouge import Rouge
@@ -18,16 +20,22 @@ class TextGenerationMetric(Metric):
     """The metric computation class for text generation classes.
 
     This metric class calculates F1 of the rouge scores for the whole evaluation dataset.
+
+    Args:
+        target_text: The key of the target text column in the `inputs` arg.
+        pred_text: The key of the predicted text column in the `outputs` arg.
     """
 
-    def __init__(self):
+    def __init__(self, target_text='tgts', pred_text='preds'):
         self.preds: List[str] = []
         self.tgts: List[str] = []
         self.rouge = Rouge()
+        self.target_text = target_text
+        self.pred_text = pred_text
 
     def add(self, outputs: Dict[str, List[str]], inputs: Dict[str, List[str]]):
-        ground_truths = inputs['tgts']
-        eval_results = outputs['preds']
+        ground_truths = inputs[self.target_text]
+        eval_results = outputs[self.pred_text]
         for truth in ground_truths:
             self.tgts.append(rebuild_chinese_str(truth))
         for result in eval_results:
@@ -38,7 +46,7 @@ class TextGenerationMetric(Metric):
         def remove_useless(string: str) -> str:
             return string.replace(' ', '').replace('.', '')
 
-        return remove_useless(pred) and remove_useless(tgt)
+        return len(remove_useless(pred)) != 0 and len(remove_useless(tgt)) != 0
 
     def evaluate(self):
         assert self.preds, 'preds in TextGenerationMetric must not be empty!'
@@ -49,7 +57,8 @@ class TextGenerationMetric(Metric):
         def mean(iter: Iterable) -> float:
             return sum(iter) / len(self.preds)
 
-        rouge_scores = self.rouge.get_scores(hyps=preds, refs=tgts)
+        with extend_recursion_limit(preds, tgts):
+            rouge_scores = self.rouge.get_scores(hyps=preds, refs=tgts)
         rouge_1 = mean(map(lambda score: score['rouge-1']['f'], rouge_scores))
         rouge_l = mean(map(lambda score: score['rouge-l']['f'], rouge_scores))
 
@@ -70,3 +79,25 @@ class TextGenerationMetric(Metric):
             MetricKeys.BLEU_1: bleu_1,
             MetricKeys.BLEU_4: bleu_4
         }
+
+    def merge(self, other: 'TextGenerationMetric'):
+        self.preds.extend(other.preds)
+        self.tgts.extend(other.tgts)
+
+    def __getstate__(self):
+        return self.preds, self.tgts
+
+    def __setstate__(self, state):
+        self.__init__()
+        self.preds, self.tgts = state
+
+
+@contextmanager
+def extend_recursion_limit(preds: Tuple[str], tgts: Tuple[str]):
+    origin_limit = sys.getrecursionlimit()
+    new_limit = max(len(pred)
+                    for pred in preds) * max(len(tgt) for tgt in tgts)
+    if new_limit > origin_limit:
+        sys.setrecursionlimit(new_limit)
+    yield
+    sys.setrecursionlimit(origin_limit)

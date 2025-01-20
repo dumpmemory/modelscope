@@ -1,5 +1,5 @@
 # The implementation here is modified based on EfficientNet,
-# originally Apache 2.0 License and publicly avaialbe at https://github.com/lukemelas/EfficientNet-PyTorch
+# originally Apache 2.0 License and publicly available at https://github.com/lukemelas/EfficientNet-PyTorch
 
 import collections
 import math
@@ -207,7 +207,7 @@ class Conv2dDynamicSamePadding(nn.Conv2d):
 
 class Conv2dStaticSamePadding(nn.Conv2d):
     """2D Convolutions like TensorFlow's 'SAME' mode, with the given input image size.
-       The padding mudule is calculated in construction function, then used in forward.
+       The padding module is calculated in construction function, then used in forward.
     """
 
     def __init__(self,

@@ -13,8 +13,9 @@ from modelscope.hub.repository import Repository
 from modelscope.hub.snapshot_download import snapshot_download
 from modelscope.utils.constant import ModelFile
 from modelscope.utils.logger import get_logger
-from .test_utils import (TEST_ACCESS_TOKEN1, TEST_MODEL_CHINESE_NAME,
-                         TEST_MODEL_ORG)
+from modelscope.utils.test_utils import (TEST_ACCESS_TOKEN1,
+                                         TEST_MODEL_CHINESE_NAME,
+                                         TEST_MODEL_ORG)
 
 logger = get_logger()
 logger.setLevel('DEBUG')
@@ -51,11 +52,13 @@ class HubRevisionTest(unittest.TestCase):
         self.repo.tag_and_push(self.revision, 'Test revision')
 
     def test_no_tag(self):
-        with self.assertRaises(NoValidRevisionError):
-            snapshot_download(self.model_id, None)
+        # no tag will download master
+        snapshot_download(self.model_id, None)
+        # not specified tag will use master
+        model_file_download(self.model_id, ModelFile.README)
 
-        with self.assertRaises(NoValidRevisionError):
-            model_file_download(self.model_id, ModelFile.README)
+        # specified master branch
+        snapshot_download(self.model_id, 'master')
 
     def test_with_only_one_tag(self):
         self.prepare_repo_data()

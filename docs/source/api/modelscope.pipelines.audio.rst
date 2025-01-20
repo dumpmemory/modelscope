@@ -1,7 +1,19 @@
-modelscope.pipelines.audio package
-==================================
+modelscope.pipelines.audio
+=======================
 
 .. automodule:: modelscope.pipelines.audio
-   :members:
-   :undoc-members:
-   :show-inheritance:
+
+.. currentmodule:: modelscope.pipelines.audio
+
+
+.. autosummary::
+    :toctree: generated
+    :nosignatures:
+    :template: classtemplate.rst
+
+    ANSPipeline
+    InverseTextProcessingPipeline
+    KWSFarfieldPipeline
+    KeyWordSpottingKwsbpPipeline
+    LinearAECPipeline
+    TextToSpeechSambertHifiganPipeline

@@ -5,14 +5,14 @@ from modelscope.utils.import_utils import LazyImportModule
 
 if TYPE_CHECKING:
     from .sambert_hifi import SambertHifigan
+    from .laura_codec import LauraCodecGenModel
 
 else:
     _import_structure = {
         'sambert_hifi': ['SambertHifigan'],
+        'laura_codec': ['LauraCodecGenModel'],
     }
-
     import sys
-
     sys.modules[__name__] = LazyImportModule(
         __name__,
         globals()['__file__'],

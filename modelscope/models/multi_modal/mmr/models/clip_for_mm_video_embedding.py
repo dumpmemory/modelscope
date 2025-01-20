@@ -1,5 +1,5 @@
 # The implementation is adopted from the CLIP4Clip implementation,
-# made pubicly available under Apache License, Version 2.0 at https://github.com/ArrowLuo/CLIP4Clip
+# made publicly available under Apache License, Version 2.0 at https://github.com/ArrowLuo/CLIP4Clip
 
 import os
 import random
@@ -128,13 +128,13 @@ class VideoCLIPForMultiModalEmbedding(TorchModel):
                           local_transform,
                           s=None,
                           e=None):
-        video_mask = np.zeros(self.max_frames, dtype=np.long)
+        video_mask = np.zeros(self.max_frames, dtype=int)
         max_video_length = 0
 
         # T x 3 x H x W
         video = np.zeros((self.max_frames, 3, rawVideoExtractor.size,
                           rawVideoExtractor.size),
-                         dtype=np.float)
+                         dtype=float)
 
         if s is None:
             start_time, end_time = None, None

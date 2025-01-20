@@ -2,7 +2,7 @@
 
 import os
 import subprocess
-from typing import List
+from typing import List, Optional
 
 from modelscope.utils.logger import get_logger
 from ..utils.constant import MASTER_MODEL_BRANCH
@@ -33,6 +33,9 @@ class GitCommandWrapper(metaclass=Singleton):
         """Run git command, if command return 0, return subprocess.response
              otherwise raise GitError, message is stdout and stderr.
 
+        Args:
+            args: List of command args.
+
         Raises:
             GitError: Exception with stdout and stderr.
 
@@ -42,8 +45,9 @@ class GitCommandWrapper(metaclass=Singleton):
         logger.debug(' '.join(args))
         git_env = os.environ.copy()
         git_env['GIT_TERMINAL_PROMPT'] = '0'
+        command = [self.git_path, *args]
         response = subprocess.run(
-            [self.git_path, *args],
+            command,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=git_env,
@@ -52,16 +56,18 @@ class GitCommandWrapper(metaclass=Singleton):
             response.check_returncode()
             return response
         except subprocess.CalledProcessError as error:
-            if response.returncode == 1:
-                logger.info('Nothing to commit.')
+            std_out = response.stdout.decode('utf8')
+            std_err = error.stderr.decode('utf8')
+            if 'nothing to commit' in std_out:
+                logger.info(
+                    'Nothing to commit, your local repo is upto date with remote'
+                )
                 return response
             else:
                 logger.error(
-                    'There are error run git command, you may need to login first.'
-                )
-                raise GitError('stdout: %s, stderr: %s' %
-                               (response.stdout.decode('utf8'),
-                                error.stderr.decode('utf8')))
+                    'Running git command: %s failed \n stdout: %s \n stderr: %s'
+                    % (command, std_out, std_err))
+                raise GitError(std_err)
 
     def config_auth_token(self, repo_dir, auth_token):
         url = self.get_repo_remote_url(repo_dir)
@@ -94,7 +100,7 @@ class GitCommandWrapper(metaclass=Singleton):
             return False
 
     def git_lfs_install(self, repo_dir):
-        cmd = ['git', '-C', repo_dir, 'lfs', 'install']
+        cmd = ['-C', repo_dir, 'lfs', 'install']
         try:
             self._run_git_command(*cmd)
             return True
@@ -106,7 +112,7 @@ class GitCommandWrapper(metaclass=Singleton):
               token: str,
               url: str,
               repo_name: str,
-              branch: str = None):
+              branch: Optional[str] = None):
         """ git clone command wrapper.
         For public project, token can None, private repo, there must token.
 
@@ -116,6 +122,9 @@ class GitCommandWrapper(metaclass=Singleton):
             url (str): The remote url
             repo_name (str): The local repository path name.
             branch (str, optional): _description_. Defaults to None.
+
+        Returns:
+            The popen response.
         """
         url = self._add_token(token, url)
         if branch:
@@ -162,7 +171,11 @@ class GitCommandWrapper(metaclass=Singleton):
         """Run git commit command
 
         Args:
+            repo_dir (str): the repository directory.
             message (str): commit message.
+
+        Returns:
+            The command popen response.
         """
         commit_args = ['-C', '%s' % repo_dir, 'commit', '-m', "'%s'" % message]
         rsp = self._run_git_command(*commit_args)
@@ -189,8 +202,11 @@ class GitCommandWrapper(metaclass=Singleton):
         else:
             return ['/'.join(line.split('/')[1:]) for line in info[1:]]
 
-    def pull(self, repo_dir: str):
-        cmds = ['-C', repo_dir, 'pull']
+    def pull(self,
+             repo_dir: str,
+             remote: str = 'origin',
+             branch: str = 'master'):
+        cmds = ['-C', repo_dir, 'pull', remote, branch]
         return self._run_git_command(*cmds)
 
     def push(self,

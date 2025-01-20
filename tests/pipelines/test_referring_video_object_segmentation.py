@@ -3,12 +3,10 @@ import unittest
 
 from modelscope.pipelines import pipeline
 from modelscope.utils.constant import Tasks
-from modelscope.utils.demo_utils import DemoCompatibilityCheck
 from modelscope.utils.test_utils import test_level
 
 
-class ReferringVideoObjectSegmentationTest(unittest.TestCase,
-                                           DemoCompatibilityCheck):
+class ReferringVideoObjectSegmentationTest(unittest.TestCase):
 
     def setUp(self) -> None:
         self.task = Tasks.referring_video_object_segmentation
@@ -21,8 +19,7 @@ class ReferringVideoObjectSegmentationTest(unittest.TestCase,
             'guy in black performing tricks on a bike',
             'a black bike used to perform tricks'
         ]
-        start_pt, end_pt = 4, 14
-        input_tuple = (input_location, text_queries, start_pt, end_pt)
+        input_tuple = (input_location, text_queries)
         pp = pipeline(
             Tasks.referring_video_object_segmentation, model=self.model_id)
         result = pp(input_tuple)
@@ -38,18 +35,13 @@ class ReferringVideoObjectSegmentationTest(unittest.TestCase,
             'guy in black performing tricks on a bike',
             'a black bike used to perform tricks'
         ]
-        start_pt, end_pt = 4, 14
-        input_tuple = (input_location, text_queries, start_pt, end_pt)
+        input_tuple = (input_location, text_queries)
         pp = pipeline(Tasks.referring_video_object_segmentation)
         result = pp(input_tuple)
         if result:
             print(result)
         else:
             raise ValueError('process error')
-
-    @unittest.skip('demo compatibility test is only enabled on a needed-basis')
-    def test_demo_compatibility(self):
-        self.compatibility_check()
 
 
 if __name__ == '__main__':
